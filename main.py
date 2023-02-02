@@ -1,10 +1,12 @@
 import pickle
 import string
 import nltk
+import pandas as pd
 
 nltk.download('omw-1.4')
 import gensim
 from gensim import corpora
+from gensim.models.ldamodel import LdaModel
 from gensim.models.coherencemodel import CoherenceModel
 import pyLDAvis.gensim
 
@@ -87,8 +89,10 @@ def prepare_text_for_lda(text):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     text_data = []
+    raw_text_data = []
     with open('data/amanda_orgs.csv', encoding="utf8") as f:
         for line in f:
+            raw_text_data.append(line.strip())
             tokens = prepare_text_for_lda(line)
             # if random.random() > .99:
             #     print(tokens)
@@ -98,6 +102,9 @@ if __name__ == '__main__':
     corpus = [dictionary.doc2bow(text) for text in text_data]
     pickle.dump(corpus, open('corpus.pkl', 'wb'))
     dictionary.save('dictionary.gensim')
+
+    df = pd.DataFrame(raw_text_data, columns=['Doc_String'])
+
 
     # Loop Run
     # start = 5
@@ -127,9 +134,22 @@ if __name__ == '__main__':
     # print("Coherence List: " + str(coherence_list))
 
     # Solo Run
-    ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics=NUM_TOPICS, id2word=dictionary, passes=15)
+    ldamodel = LdaModel(corpus, num_topics=NUM_TOPICS, id2word=dictionary, passes=15)
     cm = CoherenceModel(model=ldamodel, corpus=corpus, coherence="u_mass")
     print("coherence: " + str(cm.get_coherence()))
     print("perplexity:" + str(ldamodel.log_perplexity(corpus)))
     lda_display = pyLDAvis.gensim.prepare(ldamodel, corpus, dictionary, sort_topics=False)
     pyLDAvis.save_html(lda_display, 'lda_result.html')
+
+    all_topics = ldamodel.get_document_topics(corpus, minimum_probability=0.0)
+    all_topics_csr = gensim.matutils.corpus2csc(all_topics)
+    all_topics_numpy = all_topics_csr.T.toarray()
+    all_topics_df = pd.DataFrame(all_topics_numpy)
+    print(all_topics_df.head())
+    print(all_topics_df.shape)
+    print(df.head())
+
+    pd_merged = pd.merge(all_topics_df, df, left_index=True, right_index=True)
+    print(pd_merged.head())
+
+    pd_merged.to_csv("results/topics_by_line.csv", index=False)
